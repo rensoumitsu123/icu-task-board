@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ICU看護やることリスト</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f6f8; --surface:#ffffff; --ink:#1b2733; --ink-soft:#5b6b7b;
+    --line:#e2e8ef; --teal:#0d8a8a; --teal-deep:#0a6b6b; --teal-soft:#e6f4f4;
+    --slate:#3f5168; --slate-run:#5b738e;
+    --amber:#c05621; --amber-soft:#fff3e0; --red:#e53e3e; --red-deep:#c0392b;
+    --done-bg:#e9edf1; --done-ink:#9aa7b3;
+    --shadow:0 1px 3px rgba(20,40,60,.08),0 6px 18px rgba(20,40,60,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);line-height:1.4;-webkit-font-smoothing:antialiased;overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none}
+
+  .app{display:flex;flex-direction:column;height:100vh;height:100dvh;max-width:834px;margin:0 auto;background:var(--bg)}
+
+  header.bar{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--line);padding:8px 10px;display:flex;align-items:center;gap:8px;box-shadow:var(--shadow);flex-wrap:wrap}
+  .ttl{font-weight:900;font-size:15px;display:flex;align-items:center;gap:5px}
+  .ttl .dot{color:var(--teal)}
+  .status{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:5px}
+  .status.on{background:var(--teal-soft);color:var(--teal-deep)}
+  .status.off{background:#fdecea;color:var(--red-deep)}
+  .status .dotled{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .today{font-size:11px;color:var(--ink-soft);font-weight:700}
+  .spacer{flex:1}
+  .btn{font-weight:700;font-size:12px;padding:7px 12px;border-radius:8px;transition:.12s}
+  .btn-ghost{background:#eef0f2;color:var(--ink)}
+  .btn-on{background:var(--teal);color:#fff}
+  .btn-undo{background:#fff3e0;color:var(--amber);border:1.5px solid #f0c39a}
+
+  .strip{flex-shrink:0;display:flex;gap:6px;flex-wrap:wrap;padding:7px 10px 6px;font-size:11px;color:var(--ink-soft);align-items:center;background:var(--surface);border-bottom:1px solid var(--line)}
+  .strip .lab{font-weight:700}
+  .swatch{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;font-weight:700;font-size:11px}
+  .sw-normal{background:var(--teal-soft);color:var(--teal-deep)}
+  .sw-high{background:var(--amber-soft);color:var(--amber);border:1.5px solid #f0c39a}
+  .sw-urgent{background:var(--red);color:#fff}
+  .sw-done{background:var(--done-bg);color:var(--done-ink);text-decoration:line-through}
+  .strip .hint{flex-basis:100%;color:#8896a4;font-size:10.5px}
+
+  .board-wrap{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 10px 24px}
+  .board{display:grid;grid-template-columns:52px repeat(4,1fr);gap:6px;width:100%}
+  .head-cell{position:sticky;top:0;z-index:20;background:var(--bg);font-weight:700;font-size:11.5px;color:var(--ink-soft);text-align:center;padding:5px 2px 6px;border-bottom:2px solid var(--line)}
+  .section-row{grid-column:1/-1;font-size:11.5px;font-weight:700;color:var(--ink-soft);padding:9px 4px 3px;margin-top:5px;border-top:2px dashed #cfd8e2}
+
+  .cell{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:6px;min-height:54px;display:flex;flex-direction:column;gap:5px}
+  .cell.wide{grid-column:span 4;flex-direction:row;flex-wrap:wrap;align-items:flex-start}
+  .cell.wide .chip{width:auto;flex:0 0 auto;max-width:100%}
+  .cell.wide .add-btn{width:auto;padding:6px 12px}
+
+  .bed-cell{align-items:stretch;justify-content:flex-start;gap:5px;padding:6px 4px;border:none}
+  .bed-cell.bed.edit{background:var(--teal-deep)}
+  .bed-cell.bed.run{background:var(--teal)}
+  .bed-cell.special.edit{background:var(--slate)}
+  .bed-cell.special.run{background:var(--slate-run)}
+  .bednum{color:#fff;font-weight:900;font-size:13px;letter-spacing:.2px;text-align:center;line-height:1.1}
+  .lanename{color:#fff;font-weight:900;font-size:12.5px;text-align:center;line-height:1.2}
+  .bedstat{color:rgba(255,255,255,.85);font-size:9.5px;font-weight:700;text-align:center}
+  .bed-toggle{width:100%;border-radius:7px;font-size:12px;font-weight:900;padding:12px 0;background:#fff;color:var(--ink);text-align:center;white-space:nowrap;min-height:44px}
+  .bed-cell.special .bed-toggle{color:var(--slate)}
+  .bed-cell.run .bed-toggle{background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.6)}
+
+  .chip{display:flex;flex-wrap:wrap;align-items:center;gap:5px;width:100%;text-align:left;border-radius:7px;padding:8px 9px;font-size:12px;font-weight:700;line-height:1.25;border:1.5px solid transparent;transition:.1s;min-height:44px}
+  .chip .pri{flex-shrink:0;font-size:12px;font-weight:900;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center}
+  .chip .lbl{flex:1;min-width:60px;word-break:break-word}
+
+  .chip.off{background:#fff;border-color:var(--line);color:#aeb8c2}
+  .chip.off .pri{display:none}
+  .chip.on-normal,.chip.run-normal{background:var(--teal-soft);border-color:#bfe3e3;color:var(--teal-deep)}
+  .chip.on-normal .pri,.chip.run-normal .pri{background:#fff;color:var(--teal-deep)}
+  .chip.on-high,.chip.run-high{background:var(--amber-soft);border-color:#f0c39a;color:var(--amber)}
+  .chip.on-high .pri,.chip.run-high .pri{background:var(--amber);color:#fff}
+  .chip.on-urgent,.chip.run-urgent{background:var(--red);border-color:var(--red-deep);color:#fff}
+  .chip.on-urgent .pri,.chip.run-urgent .pri{background:#fff;color:var(--red)}
+  .chip.run-urgent{box-shadow:0 0 0 3px rgba(229,62,62,.18)}
+  .chip.done{background:var(--done-bg);border-color:var(--done-bg);color:var(--done-ink);text-decoration:line-through}
+  .chip.done .pri{background:transparent;color:inherit;text-decoration:none}
+
+  .bedtags{display:inline-flex;gap:3px;flex-wrap:wrap;align-items:center}
+  .bedtag{background:#fff;color:var(--ink);font-size:11px;font-weight:900;border-radius:5px;padding:1px 5px;line-height:1.4;border:1px solid rgba(0,0,0,.06)}
+  .timetag{background:#fff;color:var(--ink);font-size:11px;font-weight:800;border-radius:5px;padding:1px 6px;line-height:1.4;border:1px solid rgba(0,0,0,.06)}
+  .drugtag{background:#fff;color:#7b2d8e;font-size:11px;font-weight:800;border-radius:5px;padding:1px 6px;line-height:1.4;border:1px solid #e3c7ec}
+  .drug-pick-btn{flex-shrink:0;font-size:12px;font-weight:800;border-radius:7px;padding:9px 11px;background:rgba(255,255,255,.9);color:#7b2d8e;border:1px solid rgba(0,0,0,.08)}
+  .drug-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .drug-opt{padding:11px 8px;border-radius:9px;border:1.5px solid var(--line);font-weight:800;font-size:13px;color:var(--ink);background:#fff;text-align:center}
+  .drug-opt.on{background:#7b2d8e;border-color:#5e1f6e;color:#fff}
+  .drug-opt.other{grid-column:1/-1;border-style:dashed;color:var(--ink-soft)}
+  .sheet-chips .drug-pick-btn{font-size:14px;padding:7px 12px;border-radius:8px}
+  .sheet-chips .drugtag{font-size:14px;padding:3px 8px}
+  .bed-pick-btn{flex-shrink:0;font-size:12px;font-weight:800;border-radius:7px;padding:9px 11px;background:rgba(255,255,255,.9);color:var(--slate);border:1px solid rgba(0,0,0,.08)}
+  .time-pick-btn{flex-shrink:0;font-size:12px;font-weight:800;border-radius:7px;padding:9px 11px;background:rgba(255,255,255,.9);color:var(--teal-deep);border:1px solid rgba(0,0,0,.08)}
+
+  .add-btn{font-size:12px;color:var(--ink-soft);border:1.5px dashed var(--line);border-radius:8px;padding:13px;font-weight:700;min-height:44px}
+  .add-btn:active{background:var(--teal-soft)}
+  .cell-empty{font-size:11px;color:#c2cad2;text-align:center;padding:6px 0}
+
+  .pick-bg{display:none;position:fixed;inset:0;background:rgba(20,40,60,.45);z-index:220;align-items:center;justify-content:center;padding:20px}
+  .pick-bg.show{display:flex}
+  .pick-card{background:#fff;border-radius:14px;padding:18px;width:100%;max-width:320px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  .pick-card h3{font-size:15px;margin-bottom:4px}
+  .pick-card p{font-size:12px;color:var(--ink-soft);margin-bottom:14px}
+  .pick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+  .pick-bed{padding:12px 0;border-radius:9px;border:1.5px solid var(--line);font-weight:900;font-size:14px;color:var(--ink-soft);background:#fff}
+  .pick-bed.on{background:var(--teal);border-color:var(--teal-deep);color:#fff}
+  .pick-close{flex:1;padding:11px;border-radius:9px;background:var(--teal);color:#fff;font-weight:700;font-size:14px}
+  .time-input{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:9px;font-size:20px;font-family:inherit;text-align:center;color:var(--ink)}
+  /* 完了時の「ありがとう」演出 */
+  .thanks-toast{position:fixed;left:50%;top:40%;z-index:200;pointer-events:none;opacity:0;
+    background:linear-gradient(135deg,var(--teal),var(--teal-deep));color:#fff;
+    border-radius:16px;padding:15px 24px;min-width:150px;text-align:center;
+    box-shadow:0 16px 44px rgba(13,138,138,.42)}
+  .thanks-toast.show{animation:thanksPop 1.45s cubic-bezier(.2,.7,.3,1) forwards}
+  .thanks-toast .tc{font-size:12px;font-weight:700;opacity:.85;margin-bottom:5px}
+  .thanks-toast .tw{font-size:27px;font-weight:900;line-height:1.15}
+  .thanks-toast .tl{font-size:12px;font-weight:800;opacity:.9;margin-top:6px;letter-spacing:.04em}
+  @keyframes thanksPop{
+    0%{opacity:0;transform:translate(-50%,-44%) scale(.8)}
+    16%{opacity:1;transform:translate(-50%,-50%) scale(1.05)}
+    28%{transform:translate(-50%,-50%) scale(1)}
+    76%{opacity:1;transform:translate(-50%,-54%) scale(1)}
+    100%{opacity:0;transform:translate(-50%,-64%) scale(.97)}
+  }
+  /* ベッド完了時のおめでとう（ゴールド） */
+  .thanks-toast.gold{background:linear-gradient(135deg,#f0b429,#c05621);box-shadow:0 16px 44px rgba(192,86,33,.42)}
+  /* 全ベッド完了の花火バナー */
+  .fw-banner{position:fixed;left:50%;top:42%;z-index:195;pointer-events:none;opacity:0;
+    background:rgba(255,255,255,.95);border-radius:20px;padding:20px 32px;text-align:center;
+    box-shadow:0 18px 52px rgba(0,0,0,.22)}
+  .fw-banner.show{animation:fwBan 3.7s ease forwards}
+  .fw-banner .be{font-size:13px;font-weight:800;color:var(--ink-soft);margin-bottom:5px}
+  .fw-banner .bw{font-size:38px;font-weight:900;line-height:1.1;color:var(--teal-deep)}
+  .fw-banner .bs{font-size:14px;font-weight:800;color:var(--amber);margin-top:7px;letter-spacing:.04em}
+  @keyframes fwBan{
+    0%{opacity:0;transform:translate(-50%,-46%) scale(.8)}
+    10%{opacity:1;transform:translate(-50%,-50%) scale(1.06)}
+    20%{transform:translate(-50%,-50%) scale(1)}
+    84%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+    100%{opacity:0;transform:translate(-50%,-58%) scale(1)}
+  }  /* ベッド頭の「📋項目」ヒント */
+  .bed-edit-hint{font-size:9px;font-weight:800;color:rgba(255,255,255,.92);background:rgba(0,0,0,.18);border-radius:5px;padding:1px 5px;letter-spacing:.02em}
+
+  /* 全画面 項目選択シート（文字を大きく） */
+  .sheet-bg{display:none;position:fixed;inset:0;background:rgba(20,40,60,.5);z-index:150}
+  .sheet-bg.show{display:block}
+  .sheet{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column}
+  .sheet-head{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:13px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
+  .sheet-head .sh-bed{font-size:19px;font-weight:900;color:#fff;padding:7px 15px;border-radius:10px;line-height:1}
+  .sheet-head .sh-ttl{font-size:14px;font-weight:800;color:var(--ink-soft)}
+  .sheet-head .sh-close{margin-left:auto;font-size:15px;font-weight:900;padding:14px 24px;border-radius:10px;background:var(--ink);color:#fff;border:none;min-height:44px}
+  .sheet-body{flex:1;min-height:0;overflow:hidden;padding:10px}
+  .sheet-fit{width:100%}
+  .sheet-grid{display:grid;gap:8px;align-items:start;width:100%}
+  .shcol{display:flex;flex-direction:column;gap:6px;min-width:0;border-radius:11px;padding:8px}
+  .shcol.cat-care{background:#f1f9f9}
+  .shcol.cat-proc{background:#eef3fc}
+  .shcol.cat-test{background:#fdf6ea}
+  .shcol.cat-conf{background:#f6f1fc}
+  .shcol.cat-care .chip.off{background:#e2f1f1;border-color:#c6e6e6;color:#356a6a}
+  .shcol.cat-proc .chip.off{background:#e6edfa;border-color:#cfdcf3;color:#3a4f80}
+  .shcol.cat-test .chip.off{background:#faefda;border-color:#f0dcb4;color:#7a5a1f}
+  .shcol.cat-conf .chip.off{background:#efe6fa;border-color:#ddc9f0;color:#5c3f82}
+  .shcol-h{font-size:13px;font-weight:900;color:var(--teal-deep);padding-bottom:5px;border-bottom:2px solid var(--teal-soft);margin-bottom:2px}
+  .shcol .chip{font-size:13px;padding:9px 10px;min-height:44px;border-radius:9px;gap:6px;align-items:center}
+  .shcol .chip .pri{font-size:13px;width:28px;height:28px;border-radius:6px}
+  .shcol .chip .lbl{min-width:40px;font-size:13px}
+  .shcol .bedtag,.shcol .timetag,.shcol .drugtag{font-size:11px;padding:2px 5px}
+  .shcol .bed-pick-btn,.shcol .time-pick-btn,.shcol .drug-pick-btn{font-size:12px;padding:9px 11px;border-radius:7px}
+  .shcol .add-btn{font-size:12px;padding:13px;border-radius:8px;min-height:44px}
+  .shsub{font-size:11px;font-weight:800;color:var(--ink-soft);margin:6px 0 1px;padding-bottom:2px;border-bottom:1px dashed var(--line)}
+  .shcol .shsub:first-of-type{margin-top:1px}
+  /* 横置き・広い画面（iPad横向き全画面など）は盤の文字を大きく */
+  @media (min-width:900px){
+    .app{max-width:none}
+    .cell:not(.bed-cell){display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:5px;align-content:start}
+    .cell .chip{width:auto;font-size:15.5px;min-height:46px;padding:10px 11px}
+    .cell .chip .pri{width:30px;height:30px;font-size:14px}
+    .cell-empty{grid-column:1/-1}
+    .head-cell{font-size:14px}
+    .bednum{font-size:16px}
+    .lanename{font-size:15px}
+    .bed-toggle{font-size:13px}
+    .bedstat{font-size:11px}
+    .hint{display:none}
+  }
+  /* 文字サイズ 大／特大（盤の文字を拡大。拡大時はスクロール許可） */
+  .app.fz-lg .cell .chip{font-size:15px;min-height:48px}
+  .app.fz-lg .bednum{font-size:15px}
+  .app.fz-lg .head-cell{font-size:13px}
+  .app.fz-lg .bed-toggle{font-size:13px}
+  .app.fz-xl .cell .chip{font-size:18px;min-height:56px}
+  .app.fz-xl .cell .chip .pri{width:32px;height:32px;font-size:14px}
+  .app.fz-xl .bednum{font-size:18px}
+  .app.fz-xl .head-cell{font-size:15px}
+  .app.fz-xl .bed-toggle{font-size:14px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="ttl">🛏 ICU看護やることリスト<span class="dot">.</span></div>
+    <span class="status off" id="status"><span class="dotled"></span><span id="statusText">接続中…</span></span>
+    <span class="today" id="today"></span>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" id="fontBtn" onclick="cycleFont()">文字 標準</button>
+    <button class="btn btn-ghost" id="chimeBtn" onclick="toggleChime()">🔔 音OFF</button>
+    <button class="btn btn-undo" id="undoBtn" style="display:none" onclick="undoClear()">↩ 元に戻す</button>
+    <button class="btn btn-ghost" onclick="resetAll()">今日の盤をクリア</button>
+  </header>
+  <div class="strip" id="strip"></div>
+  <div class="board-wrap"><div class="board" id="board"></div></div>
+  <div class="thanks-toast" id="thanksToast"></div>
+  <div class="fw-banner" id="fwBanner"></div>
+  <!-- 全画面 項目選択シート -->
+  <div class="sheet-bg" id="bedSheetBg">
+    <div class="sheet">
+      <div class="sheet-head">
+        <span class="sh-bed" id="sheetBed"></span>
+        <span class="sh-ttl">の項目を選択</span>
+        <button class="sh-close" onclick="closeBedSheet()">確定</button>
+      </div>
+      <div class="sheet-body" id="bedSheetBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ベッド選択モーダル -->
+<div class="pick-bg" id="pickBg">
+  <div class="pick-card">
+    <h3 id="pickTitle"></h3>
+    <p>対象のベッド番号をタップ（複数可・選ばなくてもOK）</p>
+    <div class="pick-grid" id="pickGrid"></div>
+    <div style="display:flex"><button class="pick-close" onclick="closePicker()">閉じる</button></div>
+  </div>
+</div>
+
+<!-- 予定時刻モーダル -->
+<div class="pick-bg" id="timeBg">
+  <div class="pick-card">
+    <h3 id="timeTitle"></h3>
+    <p>24時間表記で予定時刻を設定（任意）</p>
+    <input type="time" id="timeInput" class="time-input">
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="pick-close" style="background:#eef0f2;color:var(--ink)" onclick="clearTime()">時刻なし</button>
+      <button class="pick-close" onclick="applyTime()">設定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 薬剤選択モーダル -->
+<div class="pick-bg" id="drugBg">
+  <div class="pick-card">
+    <h3 id="drugTitle"></h3>
+    <p>変更後の薬剤をタップ（任意）</p>
+    <div class="drug-grid" id="drugGrid"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="pick-close" style="background:#eef0f2;color:var(--ink)" onclick="clearDrug()">薬剤なし</button>
+      <button class="pick-close" onclick="closeDrug()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Supabase 接続情報（既存のICUプロジェクトの値）。別プロジェクトに移す場合のみ差し替え。
+   ============================================================ */
+const SUPABASE_URL      = 'https://qepfuorcodwenxzadbts.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_SdXoZvFXe3IMS_Ycq0HsNw_0iwaemcr';
+
+const BEDS = ['210-1','210-2','211-1','211-2','211-3','211-4','211-5','211-6'];
+const BED_COLORS = ['#0d8a8a','#d6336c','#1c7ed6','#2f9e44','#7048e8','#0891b2','#ae3ec9','#4263eb'];
+const CATS = [
+  { key:'care', label:'ケア' }, { key:'proc', label:'処置' },
+  { key:'test', label:'検査' }, { key:'conf', label:'今日やること' },
+];
+const PRESETS = {
+  care: ['清拭','陰部洗浄','口腔ケア','OHAT-J入力','洗髪','手浴・足浴','髭剃り','体位変換','吸引','ライン整理','皮膚・褥瘡観察','環境整備','物品補充','経管栄養','食事介助','排泄ケア','体重測定','気管チューブ巻き替え'],
+  proc: ['末梢ライン確保','Aライン準備','CV挿入','PICC挿入','Aライン抜去','CV抜去','気管カニューレ管理','気管切開準備','ブロンコファイバー（BF）','創傷処置','ドレーン管理','点滴交換','ルート交換（水曜）','カテーテル交換'],
+  test: ['採血','血液ガス','培養提出','X線','CT搬送','MRI搬送','12誘導心電図'],
+  conf: ['SAT/SBT（呼吸器離脱）','早期リハビリ・離床','家族面会','IC（病状説明）','鎮痛剤 変更・追加','鎮静薬 調整・変更','栄養 変更','抗菌剤 変更','入院時入力','家族対応','持参薬確認','アナムネ聴取','記録監査','看護計画','転倒転落評価','褥瘡評価','術後ベッド作成','転棟準備','転棟','部屋移動'],
+};
+/* 選択シートの小見出し（各グループの先頭項目ラベル→見出し名） */
+const SUBHEAD = {
+  care: {'清拭':'清潔ケア','体位変換':'観察・整え','経管栄養':'栄養・排泄','体重測定':'その他'},
+  proc: {'末梢ライン確保':'ライン確保・準備','Aライン抜去':'抜去','気管カニューレ管理':'気道','創傷処置':'創傷・ドレーン・薬剤'},
+  test: {'採血':'採血・検体','X線':'画像','12誘導心電図':'生理'},
+  conf: {'SAT/SBT（呼吸器離脱）':'ABCDEFバンドル','鎮痛剤 変更・追加':'本日の方針変更','入院時入力':'入院関連','記録監査':'記録・計画関連','術後ベッド作成':'移動・ベッド管理関連'},
+};
+const SPECIAL = [
+  { key:'adm', label:'入院',     presets:['入院時入力','家族対応','持参薬確認','アナムネ聴取'] },
+  { key:'rec', label:'記録・計画', presets:['記録監査','看護計画','転倒転落評価','褥瘡評価'] },
+  { key:'move', label:'移動・ベッド管理', presets:['術後ベッド作成','転棟準備','転棟','部屋移動'] },
+];
+const CACHE='icu_floor_cache_v2', BACKUP='icu_floor_clear_backup';
+
+function dateStr(d){ const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+const TODAY = dateStr(new Date());
+
+let sb=null, online=false;
+let lanes=[];
+let laneIdx={};
+
+function mk(l){ return {label:l,active:false,priority:0,done:false,beds:[],time:null,drug:null,dbId:null}; }
+function initBoard(){
+  lanes=[]; laneIdx={};
+  BEDS.forEach((b,i)=>{ const cells={}; CATS.forEach(c=> cells[c.key]=PRESETS[c.key].map(mk)); lanes.push({kind:'bed',key:'bed'+(i+1),label:b,mode:'run',cells}); });
+  lanes.forEach((L,i)=> laneIdx[L.key]=i);
+}
+function bucket(li,ck){ const L=lanes[li]; return L.kind==='bed'?L.cells[ck]:L.tasks; }
+
+/* ====== 接続・同期 ====== */
+function setStatus(ok){
+  online=ok;
+  const s=document.getElementById('status');
+  s.className='status '+(ok?'on':'off');
+  document.getElementById('statusText').textContent = ok?'同期中':'オフライン（端末内に保存）';
+}
+async function boot(){
+  document.getElementById('today').textContent = TODAY.replace(/-/g,'/');
+  renderStrip();
+  try{
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { error } = await sb.from('icu_floor_tasks').select('id').limit(1);
+    if(error) throw error;
+    setStatus(true);
+    await cleanupOld();
+    await reloadAll();
+    subscribeRealtime();
+  }catch(e){
+    console.warn('オフラインで起動：', e && e.message);
+    setStatus(false);
+    if(!loadCache()) initBoard();
+    render();
+  }
+  updateUndoBtn();
+}
+
+async function cleanupOld(){
+  try{
+    const cut = dateStr(new Date(Date.now()-7*864e5));
+    await sb.from('icu_floor_tasks').delete().lt('service_date',cut);
+    await sb.from('icu_lane_modes').delete().lt('service_date',cut);
+  }catch(e){}
+}
+
+let reloadTimer=null;
+function scheduleReload(){ clearTimeout(reloadTimer); reloadTimer=setTimeout(reloadAll,350); }
+async function reloadAll(){
+  if(!online) return;
+  try{
+    const [tRes,mRes] = await Promise.all([
+      sb.from('icu_floor_tasks').select('*').eq('service_date',TODAY),
+      sb.from('icu_lane_modes').select('*').eq('service_date',TODAY),
+    ]);
+    if(tRes.error) throw tRes.error; if(mRes.error) throw mRes.error;
+    const before = activeKeySet();
+    rebuildLanes(tRes.data||[], mRes.data||[]);
+    const after = activeKeySet();
+    if(!firstSync){ for(const k of after){ if(!before.has(k)){ playChime(); break; } } }
+    firstSync=false;
+    render(); saveCache();
+  }catch(e){ goOffline(e); }
+}
+function rebuildLanes(taskRows, modeRows){
+  initBoard();
+  modeRows.forEach(m=>{ const li=laneIdx[m.lane_key]; if(li!=null) lanes[li].mode=m.mode; });
+  taskRows.forEach(r=>{
+    const li=laneIdx[r.lane_key]; if(li==null) return;
+    const ck = lanes[li].kind==='bed' ? r.category : 'tasks';
+    const arr = bucket(li,ck); if(!arr) return;
+    let t = arr.find(x=> x.label===r.label && !x.active);
+    if(t){ t.active=true; t.priority=r.priority; t.done=r.done; t.beds=r.beds||[]; t.time=r.task_time||null; t.drug=r.drug||null; t.dbId=r.id; }
+    else { arr.push({label:r.label,active:true,priority:r.priority,done:r.done,beds:r.beds||[],time:r.task_time||null,dbId:r.id,custom:true}); }
+  });
+}
+function subscribeRealtime(){
+  try{
+    sb.channel('icu_floor')
+      .on('postgres_changes',{event:'*',schema:'public',table:'icu_floor_tasks'},scheduleReload)
+      .on('postgres_changes',{event:'*',schema:'public',table:'icu_lane_modes'},scheduleReload)
+      .subscribe();
+  }catch(e){}
+}
+function goOffline(e){ console.warn('オフラインへ切替：', e && e.message); setStatus(false); saveCache(); }
+
+/* ====== ローカル保険（オフライン時） ====== */
+function saveCache(){ try{ localStorage.setItem(CACHE, JSON.stringify(lanes)); }catch(e){} }
+function loadCache(){ try{ const s=localStorage.getItem(CACHE); if(s){ lanes=JSON.parse(s); lanes.forEach((L,i)=>laneIdx[L.key]=i); return true; } }catch(e){} return false; }
+
+/* ====== DB書き込み ====== */
+async function pushTask(li,ck,t){
+  saveCache();
+  if(!online) return;
+  const row={ service_date:TODAY, lane_key:lanes[li].key, category:ck, label:t.label,
+              priority:t.priority, done:t.done, beds:t.beds, task_time:t.time, drug:t.drug||null, updated_at:new Date().toISOString() };
+  try{
+    const { data, error } = await sb.from('icu_floor_tasks')
+      .upsert(row,{onConflict:'service_date,lane_key,category,label'}).select('id').single();
+    if(error) throw error;
+    t.dbId=data.id;
+  }catch(e){ goOffline(e); }
+}
+async function deleteTask(dbId){
+  saveCache();
+  if(!online || !dbId) return;
+  try{ const { error } = await sb.from('icu_floor_tasks').delete().eq('id',dbId); if(error) throw error; }
+  catch(e){ goOffline(e); }
+}
+async function pushMode(li){
+  saveCache();
+  if(!online) return;
+  try{
+    const { error } = await sb.from('icu_lane_modes')
+      .upsert({service_date:TODAY, lane_key:lanes[li].key, mode:lanes[li].mode, updated_at:new Date().toISOString()},{onConflict:'service_date,lane_key'});
+    if(error) throw error;
+  }catch(e){ goOffline(e); }
+}
+
+/* ====== 表示 ====== */
+function renderStrip(){
+  document.getElementById('strip').innerHTML =
+    `<span class="lab">色</span>
+     <span class="swatch sw-normal">通常</span>
+     <span class="swatch sw-high">優先 高</span>
+     <span class="swatch sw-urgent">緊急</span>
+     <span class="swatch sw-done">✓ 実施済</span>
+     <span class="hint">各ベッドの【修正】で全画面が開き、項目をタップで選択→【確定】で一覧へ。一覧ではチップをタップで実施済み。【通･高･緊】優先度／【🕐】予定時刻／【💊】薬剤。入院・記録・移動などの共通業務も「今日やること」内で選べます。変更は全端末に即同期され、毎朝この日の新しい盤になります。</span>`;
+}
+function priMark(p){ return p===0?'通':p===1?'高':'緊'; }
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function bedTags(t){ if(!t.beds||!t.beds.length) return ''; return `<span class="bedtags">`+[...t.beds].sort((a,b)=>a-b).map(i=>`<span class="bedtag" style="background:${BED_COLORS[i%BED_COLORS.length]};color:#fff;border-color:${BED_COLORS[i%BED_COLORS.length]}">${BEDS[i]}</span>`).join('')+`</span>`; }
+function timeTag(t){ return t.time?`<span class="timetag">🕐${t.time}</span>`:''; }
+
+/* ===== 薬剤（鎮痛剤・抗菌剤の変更内容） ===== */
+const DRUGS = {
+  analgesic: ['レミフェンタニル','フェンタニル','モルヒネ','デクスメデトミジン','アセトアミノフェン'],
+  antibiotic:['セファゾリン','セフトリアキソン','セフメタゾール','スルバクタム/アンピシリン','タゾバクタム/ピペラシリン','メロペネム','バンコマイシン','クリンダマイシン','レボフロキサシン','メトロニダゾール'],
+};
+function drugKind(label){ if(label.indexOf('鎮痛剤')>=0) return 'analgesic'; if(label.indexOf('抗菌剤')>=0) return 'antibiotic'; return null; }
+function drugTag(t){ return t.drug?`<span class="drugtag">💊${esc(t.drug)}</span>`:''; }
+
+function render(){
+  let html = `<div class="head-cell"></div>`;
+  CATS.forEach(c=> html += `<div class="head-cell">${c.label}</div>`);
+  let dividerDone=false;
+  lanes.forEach((L,li)=>{
+    if(L.kind==='special' && !dividerDone){ html += `<div class="section-row">共通タスク（ベッドに紐づかない業務）</div>`; dividerDone=true; }
+    const m='run';
+    const color = L.kind==='bed' ? BED_COLORS[li % BED_COLORS.length] : null;
+    const act = laneActiveDone(L).act;
+    const inner = L.kind==='bed'
+      ? `<button class="bednum" onclick="openBedSheet(${li})" style="background:none;border:none;cursor:pointer;width:100%">${L.label}</button>`
+      : `<button class="lanename" onclick="openBedSheet(${li})" style="background:none;border:none;cursor:pointer;width:100%">${esc(L.label)}</button>`;
+    const headStyle = color ? ` style="background:${color}"` : '';
+    html += `<div class="cell bed-cell ${L.kind} ${m}"${headStyle}>
+        ${inner}
+        <button class="bed-toggle" onclick="openBedSheet(${li})">修正</button>
+        <div class="bedstat">${act}件 選択</div>
+      </div>`;
+    if(L.kind==='bed'){ CATS.forEach(c=> html += cellHtml(li,c.key,m,false,color)); }
+    else { html += cellHtml(li,'tasks',m,true,null); }
+  });
+  document.getElementById('board').innerHTML = html;
+  fitBoard();
+  if(SHEET_LI!=null) renderBedSheet();
+}
+
+/* 画面の高さに収まるよう盤を自動縮小（はみ出す時だけ。少なければ等倍） */
+const FIT_MIN = 0.5;   // 縮小の下限（これ以上小さくしない＝下限を割るとスクロール）
+function fitBoard(){
+  const wrap=document.querySelector('.board-wrap');
+  const board=document.getElementById('board');
+  if(!wrap||!board) return;
+  board.style.transform='none';
+  board.style.marginBottom='0';
+  board.style.width='';
+  if(typeof FONT!=='undefined' && FONT!=='std') return;  // 拡大表示中は縮めず実寸（スクロール）
+  const cs=getComputedStyle(wrap);
+  const avail=wrap.clientHeight-(parseFloat(cs.paddingTop)||0)-(parseFloat(cs.paddingBottom)||0);
+  let natural=board.scrollHeight;
+  if(avail<=0||natural<=0) return;
+  if(natural<=avail) return;            // 収まっている→等倍のまま
+  const wide=window.innerWidth>=900;
+  if(wide){
+    // 横向き：全幅を保ったまま高さに収める（先に横を広げてから縮小）
+    let scale=Math.max(avail/natural, 0.5);
+    board.style.width=(100/scale)+'%';
+    natural=board.scrollHeight;         // 広げた状態で再計測
+    scale=Math.max(avail/natural, 0.5);
+    board.style.width=(100/scale)+'%';
+    board.style.transformOrigin='top left';
+    board.style.transform='scale('+scale+')';
+    board.style.marginBottom=(natural*(scale-1))+'px';
+  }else{
+    let scale=Math.max(avail/natural, FIT_MIN);
+    board.style.transformOrigin='top center';
+    board.style.transform='scale('+scale+')';
+    board.style.marginBottom=(natural*(scale-1))+'px';
+  }
+}
+let fitTimer=null;
+function scheduleFit(){ clearTimeout(fitTimer); fitTimer=setTimeout(()=>{ fitBoard(); if(SHEET_LI!=null) fitSheet(); },120); }
+/* 文字サイズ 標準/大/特大 */
+let FONT=(function(){ try{return localStorage.getItem('icu_font')||'std';}catch(e){return 'std';} })();
+function applyFont(){
+  const app=document.querySelector('.app'); if(!app) return;
+  app.classList.remove('fz-lg','fz-xl');
+  if(FONT==='lg') app.classList.add('fz-lg');
+  else if(FONT==='xl') app.classList.add('fz-xl');
+  const b=document.getElementById('fontBtn');
+  if(b) b.textContent='文字 '+(FONT==='lg'?'大':FONT==='xl'?'特大':'標準');
+  fitBoard();
+}
+function cycleFont(){ FONT = FONT==='std'?'lg':FONT==='lg'?'xl':'std'; try{localStorage.setItem('icu_font',FONT);}catch(e){} applyFont(); }
+
+/* 新規項目チャイム（他端末から項目が増えたとき） */
+let CHIME=(function(){ try{return localStorage.getItem('icu_chime')==='on';}catch(e){return false;} })();
+let firstSync=true, audioCtx=null, audioReady=false;
+function ensureAudio(){
+  if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; } }
+  if(audioCtx.state==='suspended'){ try{ audioCtx.resume(); }catch(e){} }
+}
+/* 最初のタップで音声を解錠（無音バッファを1回鳴らす：iOS対策） */
+function unlockAudio(){
+  ensureAudio();
+  if(audioCtx && !audioReady){
+    try{ const b=audioCtx.createBuffer(1,1,22050); const s=audioCtx.createBufferSource(); s.buffer=b; s.connect(audioCtx.destination); s.start(0); audioReady=true; }catch(e){}
+  }
+}
+document.addEventListener('touchend', unlockAudio, {passive:true});
+document.addEventListener('click', unlockAudio);
+function playTone(){
+  if(!audioCtx) return;
+  const now=audioCtx.currentTime;
+  [[880,0],[1320,0.14]].forEach(([f,d])=>{
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='sine'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001, now+d);
+    g.gain.linearRampToValueAtTime(0.25, now+d+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now+d+0.32);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(now+d); o.stop(now+d+0.34);
+  });
+}
+function playChime(){
+  if(!CHIME) return; ensureAudio(); if(!audioCtx) return;
+  if(audioCtx.state==='suspended'){ audioCtx.resume().then(playTone).catch(()=>{}); }
+  else playTone();
+}
+function activeKeySet(){
+  const s=new Set();
+  lanes.forEach(L=>{
+    if(L.kind==='bed'){ CATS.forEach(c=> (L.cells[c.key]||[]).forEach(t=>{ if(t.active) s.add(L.key+'|'+c.key+'|'+t.label); })); }
+    else { (L.tasks||[]).forEach(t=>{ if(t.active) s.add(L.key+'|tasks|'+t.label); }); }
+  });
+  return s;
+}
+function toggleChime(){
+  CHIME=!CHIME; try{localStorage.setItem('icu_chime',CHIME?'on':'off');}catch(e){}
+  updateChimeBtn();
+  if(CHIME){ ensureAudio(); playChime(); }   // ONにした瞬間に試聴
+}
+function updateChimeBtn(){ const b=document.getElementById('chimeBtn'); if(b){ b.textContent='🔔 '+(CHIME?'音ON':'音OFF'); b.classList.toggle('btn-on',CHIME); } }
+window.addEventListener('resize', scheduleFit);
+window.addEventListener('orientationchange', ()=>setTimeout(()=>{ fitBoard(); if(SHEET_LI!=null) fitSheet(); },250));
+if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(()=>setTimeout(fitBoard,50)); }
+
+function cellHtml(li,ck,m,wide,color){
+  const items=bucket(li,ck);
+  const band = color ? ` style="border:1px solid ${color}55;border-left:6px solid ${color};background:${color}14"` : '';
+  let h=`<div class="cell${wide?' wide':''}"${band}>`;
+  if(m==='edit'){
+    items.forEach((t,ti)=> h+=chipEdit(li,ck,ti,t,color));
+    h+=`<button class="add-btn" onclick="addCustom(${li},'${ck}')">＋ 追加</button>`;
+  } else {
+    const a=items.map((t,ti)=>({t,ti})).filter(o=>o.t.active);
+    if(!a.length){ h+=`<div class="cell-empty">―</div>`; }
+    else a.forEach(o=> h+=chipRun(li,ck,o.ti,o.t,color));
+  }
+  return h+`</div>`;
+}
+function chipEdit(li,ck,ti,t,color){
+  const special = lanes[li].kind==='special';
+  const cls = !t.active ? 'off' : (t.priority===0?'on-normal':t.priority===1?'on-high':'on-urgent');
+  const tint = (t.active && t.priority===0 && color);
+  const chipStyle = tint ? ` style="background:${color}33;border-color:${color};color:${color}"` : '';
+  const priStyle  = tint ? ` style="background:#fff;color:${color};border:1.5px solid ${color}"` : '';
+  let extra='';
+  if(t.active){
+    const dk=drugKind(t.label);
+    extra = bedTags(t) + timeTag(t) + drugTag(t)
+      + (special?`<button class="bed-pick-btn" onclick="openBedPicker(${li},'${ck}',${ti})">🛏ベッド</button>`:'')
+      + (dk?`<button class="drug-pick-btn" onclick="openDrugPicker(${li},'${ck}',${ti})">💊薬剤</button>`:'')
+      + `<button class="time-pick-btn" onclick="openTimePicker(${li},'${ck}',${ti})">🕐時刻</button>`;
+  }
+  return `<div class="chip ${cls}"${chipStyle}>
+      <button class="pri"${priStyle} onclick="event.stopPropagation();cyclePri(${li},'${ck}',${ti})">${priMark(t.priority)}</button>
+      <button class="lbl" style="background:none;border:none;color:inherit;font:inherit;text-align:left;padding:0;cursor:pointer"
+        onclick="toggleActive(${li},'${ck}',${ti})">${esc(t.label)}</button>
+      ${extra}
+    </div>`;
+}
+function chipRun(li,ck,ti,t,color){
+  const special = lanes[li].kind==='special';
+  const cls = t.done ? 'done' : (t.priority===0?'run-normal':t.priority===1?'run-high':'run-urgent');
+  const tint = (!t.done && t.priority===0 && color);
+  const chipStyle = tint ? ` style="background:${color}33;border-color:${color};color:${color}"` : '';
+  const priStyle  = tint ? ` style="background:#fff;color:${color};border:1.5px solid ${color}"` : '';
+  return `<button class="chip ${cls}"${chipStyle} onclick="toggleDone(${li},'${ck}',${ti})">
+      <span class="pri"${priStyle}>${t.done?'✅':priMark(t.priority)}</span>
+      <span class="lbl">${esc(t.label)}</span>
+      ${special?bedTags(t):''}${timeTag(t)}${drugTag(t)}
+    </button>`;
+}
+
+/* ====== 操作（楽観更新→DB反映） ====== */
+function toggleActive(li,ck,ti){
+  const t=bucket(li,ck)[ti]; t.active=!t.active;
+  if(t.active){ render(); pushTask(li,ck,t); }
+  else { const old=t.dbId; t.priority=0; t.beds=[]; t.time=null; t.dbId=null; render(); deleteTask(old); }
+  dirty();
+}
+function cyclePri(li,ck,ti){ const t=bucket(li,ck)[ti]; if(!t.active)t.active=true; t.priority=(t.priority+1)%3; render(); pushTask(li,ck,t); dirty(); }
+/* 世界各国の「ありがとう」（個別タスク完了時） */
+const THANKS=[
+  {w:'ありがとう',l:'日本語',f:'🇯🇵'},{w:'Thank you',l:'English',f:'🇬🇧'},
+  {w:'谢谢',l:'中文',f:'🇨🇳'},{w:'감사합니다',l:'한국어',f:'🇰🇷'},
+  {w:'Merci',l:'Français',f:'🇫🇷'},{w:'Gracias',l:'Español',f:'🇪🇸'},
+  {w:'Danke',l:'Deutsch',f:'🇩🇪'},{w:'Grazie',l:'Italiano',f:'🇮🇹'},
+  {w:'Obrigado',l:'Português',f:'🇵🇹'},{w:'Спасибо',l:'Русский',f:'🇷🇺'},
+  {w:'شكراً',l:'العربية',f:'🇸🇦'},{w:'धन्यवाद',l:'हिन्दी',f:'🇮🇳'},
+  {w:'ขอบคุณ',l:'ภาษาไทย',f:'🇹🇭'},{w:'Cảm ơn',l:'Tiếng Việt',f:'🇻🇳'},
+  {w:'Terima kasih',l:'Bahasa',f:'🇮🇩'},{w:'Teşekkürler',l:'Türkçe',f:'🇹🇷'},
+  {w:'Dank je',l:'Nederlands',f:'🇳🇱'},{w:'Tack',l:'Svenska',f:'🇸🇪'},
+  {w:'Ευχαριστώ',l:'Ελληνικά',f:'🇬🇷'},{w:'Dziękuję',l:'Polski',f:'🇵🇱'},
+  {w:'Salamat',l:'Tagalog',f:'🇵🇭'},{w:'Asante',l:'Kiswahili',f:'🇰🇪'},
+  {w:'Mahalo',l:'Hawaiian',f:'🌺'},{w:'Kiitos',l:'Suomi',f:'🇫🇮'},
+  {w:'Tak',l:'Dansk',f:'🇩🇰'},{w:'Köszönöm',l:'Magyar',f:'🇭🇺'},
+];
+let thanksTimer=null;
+function showThanks(){
+  const el=document.getElementById('thanksToast'); if(!el) return;
+  const t=THANKS[Math.floor(Math.random()*THANKS.length)];
+  el.className='thanks-toast';
+  el.innerHTML=`<div class="tc">${t.f} ${esc(t.l)}</div><div class="tw">${esc(t.w)}</div><div class="tl">完了！ ✓</div>`;
+  void el.offsetWidth; el.classList.add('show');
+  clearTimeout(thanksTimer); thanksTimer=setTimeout(()=>el.classList.remove('show'),1450);
+}
+
+/* 世界各国の「おめでとう」（ベッド/全ベッド完了時） */
+const CONGRATS=[
+  {w:'おめでとう',l:'日本語',f:'🇯🇵'},{w:'Congratulations',l:'English',f:'🇬🇧'},
+  {w:'恭喜',l:'中文',f:'🇨🇳'},{w:'축하해요',l:'한국어',f:'🇰🇷'},
+  {w:'Félicitations',l:'Français',f:'🇫🇷'},{w:'Felicidades',l:'Español',f:'🇪🇸'},
+  {w:'Glückwunsch',l:'Deutsch',f:'🇩🇪'},{w:'Complimenti',l:'Italiano',f:'🇮🇹'},
+  {w:'Parabéns',l:'Português',f:'🇵🇹'},{w:'Поздравляю',l:'Русский',f:'🇷🇺'},
+  {w:'مبروك',l:'العربية',f:'🇸🇦'},{w:'बधाई हो',l:'हिन्दी',f:'🇮🇳'},
+  {w:'ยินดีด้วย',l:'ภาษาไทย',f:'🇹🇭'},{w:'Chúc mừng',l:'Tiếng Việt',f:'🇻🇳'},
+  {w:'Selamat',l:'Bahasa',f:'🇮🇩'},{w:'Tebrikler',l:'Türkçe',f:'🇹🇷'},
+  {w:'Gefeliciteerd',l:'Nederlands',f:'🇳🇱'},{w:'Grattis',l:'Svenska',f:'🇸🇪'},
+  {w:'Συγχαρητήρια',l:'Ελληνικά',f:'🇬🇷'},{w:'Gratulacje',l:'Polski',f:'🇵🇱'},
+  {w:'Maligayang bati',l:'Tagalog',f:'🇵🇭'},{w:'Hongera',l:'Kiswahili',f:'🇰🇪'},
+  {w:'Onnea',l:'Suomi',f:'🇫🇮'},{w:'Tillykke',l:'Dansk',f:'🇩🇰'},
+  {w:'Gratulálok',l:'Magyar',f:'🇭🇺'},
+];
+
+/* 完了判定（ベッドのみ対象。空ベッドは対象外） */
+function bedActiveDone(L){
+  let act=0,dn=0;
+  if(L.kind==='bed') CATS.forEach(c=> L.cells[c.key].forEach(t=>{ if(t.active){act++; if(t.done)dn++;} }));
+  return {act,dn};
+}
+function bedComplete(L){ const {act,dn}=bedActiveDone(L); return act>0 && dn===act; }
+/* 全レーン（ベッド＋共通タスク）の active/done を数える */
+function laneActiveDone(L){
+  let act=0,dn=0;
+  const arrs = L.kind==='bed' ? CATS.map(c=>L.cells[c.key]) : [L.tasks];
+  arrs.forEach(arr=> arr.forEach(t=>{ if(t.active){act++; if(t.done)dn++;} }));
+  return {act,dn};
+}
+/* 全ベッド＋共通タスクが完了（active が1個以上あり、全部 done） */
+function allComplete(){
+  let anyActive=false, anyUndone=false;
+  lanes.forEach(L=>{ const {act,dn}=laneActiveDone(L); if(act>0){ anyActive=true; if(dn<act) anyUndone=true; } });
+  return anyActive && !anyUndone;
+}
+
+let congTimer=null;
+function showCongrats(bedLabel){
+  const el=document.getElementById('thanksToast'); if(!el) return;
+  const c=CONGRATS[Math.floor(Math.random()*CONGRATS.length)];
+  el.className='thanks-toast gold';
+  el.innerHTML=`<div class="tc">${c.f} ${esc(c.l)}</div><div class="tw">${esc(c.w)}</div><div class="tl">🎉 ${esc(bedLabel)} 完了！</div>`;
+  void el.offsetWidth; el.classList.add('show');
+  clearTimeout(congTimer); congTimer=setTimeout(()=>el.classList.remove('show'),1950);
+}
+
+/* 全ベッド完了：花火＋バナー */
+let fwBanTimer=null;
+function celebrateFireworks(){
+  const el=document.getElementById('fwBanner');
+  if(el){
+    const c=CONGRATS[Math.floor(Math.random()*CONGRATS.length)];
+    el.innerHTML=`<div class="be">🎆 全タスク完了！ 🎆</div><div class="bw">${esc(c.w)}</div><div class="bs">${c.f} ${esc(c.l)}</div>`;
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    clearTimeout(fwBanTimer); fwBanTimer=setTimeout(()=>el.classList.remove('show'),3700);
+  }
+  runFireworks();
+}
+const FW_COLORS=['#0d8a8a','#ffd166','#ef476f','#06d6a0','#ffa94d','#9b5de5','#ffffff'];
+let fwCanvas=null,fwCtx=null,fwRunning=false,fwParticles=[],fwEnd=0,fwNext=0;
+function ensureCanvas(){
+  if(fwCanvas) return;
+  fwCanvas=document.createElement('canvas');
+  fwCanvas.style.cssText='position:fixed;inset:0;z-index:190;pointer-events:none';
+  document.body.appendChild(fwCanvas); fwCtx=fwCanvas.getContext('2d');
+}
+function fwBurst(x,y){
+  const n=46+Math.floor(Math.random()*28), col=FW_COLORS[Math.floor(Math.random()*FW_COLORS.length)];
+  for(let i=0;i<n;i++){ const a=Math.PI*2*i/n+Math.random()*0.3, sp=2+Math.random()*4.4;
+    fwParticles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,col,r:1.5+Math.random()*1.9}); }
+}
+function fwLoop(now){
+  if(!fwCtx){ fwRunning=false; return; }
+  fwCtx.clearRect(0,0,fwCanvas.width,fwCanvas.height);
+  if(now<fwEnd && now>=fwNext){ fwNext=now+240+Math.random()*220;
+    fwBurst(fwCanvas.width*(0.15+Math.random()*0.7), fwCanvas.height*(0.16+Math.random()*0.42)); }
+  fwParticles.forEach(p=>{ p.vy+=0.045; p.x+=p.vx; p.y+=p.vy; p.vx*=0.992; p.vy*=0.992; p.life-=0.012; });
+  fwParticles=fwParticles.filter(p=>p.life>0);
+  fwParticles.forEach(p=>{ fwCtx.globalAlpha=Math.max(0,p.life); fwCtx.beginPath(); fwCtx.arc(p.x,p.y,p.r,0,7); fwCtx.fillStyle=p.col; fwCtx.fill(); });
+  fwCtx.globalAlpha=1;
+  if(now<fwEnd || fwParticles.length){ requestAnimationFrame(fwLoop); }
+  else { fwRunning=false; fwCtx.clearRect(0,0,fwCanvas.width,fwCanvas.height); }
+}
+function runFireworks(){
+  ensureCanvas(); fwCanvas.width=innerWidth; fwCanvas.height=innerHeight;
+  fwEnd=performance.now()+3800; fwNext=0;
+  if(!fwRunning){ fwRunning=true; requestAnimationFrame(fwLoop); }
+}
+
+function toggleDone(li,ck,ti){
+  const L=lanes[li], t=bucket(li,ck)[ti]; t.done=!t.done;
+  if(t.done){
+    if(allComplete()) celebrateFireworks();
+    else if(L.kind==='bed' && bedComplete(L)) showCongrats(L.label);
+  }
+  render(); pushTask(li,ck,t); dirty();
+}
+function addCustom(li,ck){ const v=prompt('追加する項目を入力'); if(!v||!v.trim())return; const t={label:v.trim(),active:true,priority:0,done:false,beds:[],time:null,drug:null,dbId:null,custom:true}; bucket(li,ck).push(t); render(); pushTask(li,ck,t); dirty(); }
+function toggleMode(li){ lanes[li].mode = lanes[li].mode==='edit'?'run':'edit'; render(); pushMode(li); dirty(); }
+
+/* ===== 全画面 項目選択シート ===== */
+let SHEET_LI=null;
+function openBedSheet(li){ SHEET_LI=li; renderBedSheet(); document.getElementById('bedSheetBg').classList.add('show'); }
+function closeBedSheet(){ SHEET_LI=null; document.getElementById('bedSheetBg').classList.remove('show'); }
+function renderBedSheet(){
+  if(SHEET_LI==null) return;
+  const li=SHEET_LI, L=lanes[li];
+  const color = L.kind==='bed' ? BED_COLORS[li % BED_COLORS.length] : 'var(--slate)';
+  const bedEl=document.getElementById('sheetBed');
+  bedEl.textContent=L.label; bedEl.style.background=color;
+  const cats = L.kind==='bed' ? CATS : [{key:'tasks',label:'項目'}];
+  let cols='';
+  cats.forEach(c=>{
+    const ck=c.key, items=bucket(li,ck);
+    cols += `<div class="shcol cat-${ck}"><div class="shcol-h">${c.label}</div>`;
+    items.forEach((t,ti)=>{
+      const sh = SUBHEAD[ck] && SUBHEAD[ck][t.label];
+      if(sh) cols += `<div class="shsub">${sh}</div>`;
+      cols += chipEdit(li,ck,ti,t,L.kind==='bed'?color:null);
+    });
+    cols += `<button class="add-btn" onclick="addCustom(${li},'${ck}')">＋ 追加</button></div>`;
+  });
+  document.getElementById('bedSheetBody').innerHTML =
+    `<div class="sheet-fit" id="sheetFit"><div class="sheet-grid" style="grid-template-columns:repeat(${cats.length},1fr)">${cols}</div></div>`;
+  fitSheet();
+}
+/* シートを画面の高さに収める（はみ出す時だけ縮小＝スクロール不要に） */
+function fitSheet(){
+  const body=document.getElementById('bedSheetBody');
+  const fit=document.getElementById('sheetFit');
+  if(!body||!fit) return;
+  fit.style.transform='none';
+  const cs=getComputedStyle(body);
+  const avail=body.clientHeight-(parseFloat(cs.paddingTop)||0)-(parseFloat(cs.paddingBottom)||0);
+  const natural=fit.scrollHeight;
+  if(avail<=0||natural<=0) return;
+  let scale=avail/natural;
+  if(scale>=1) return;
+  scale=Math.max(scale,0.4);
+  fit.style.transformOrigin='top center';
+  fit.style.transform='scale('+scale+')';
+}
+
+/* ベッド選択 */
+let PT=null;
+function openBedPicker(li,ck,ti){ PT={li,ck,ti}; renderPicker(); document.getElementById('pickBg').classList.add('show'); }
+function renderPicker(){ const t=bucket(PT.li,PT.ck)[PT.ti]; document.getElementById('pickTitle').textContent=`「${t.label}」のベッドを選択`; document.getElementById('pickGrid').innerHTML = BEDS.map((b,i)=>`<button class="pick-bed ${t.beds.includes(i)?'on':''}" onclick="toggleBedTag(${i})">${b}</button>`).join(''); }
+function toggleBedTag(i){ const t=bucket(PT.li,PT.ck)[PT.ti]; const k=t.beds.indexOf(i); if(k>=0)t.beds.splice(k,1); else t.beds.push(i); renderPicker(); render(); pushTask(PT.li,PT.ck,t); dirty(); }
+function closePicker(){ document.getElementById('pickBg').classList.remove('show'); }
+
+/* 予定時刻 */
+let TT=null;
+function openTimePicker(li,ck,ti){ TT={li,ck,ti}; const t=bucket(li,ck)[ti]; document.getElementById('timeTitle').textContent=`「${t.label}」の予定時刻`; document.getElementById('timeInput').value=t.time||''; document.getElementById('timeBg').classList.add('show'); }
+function applyTime(){ const t=bucket(TT.li,TT.ck)[TT.ti]; t.time=document.getElementById('timeInput').value||null; render(); pushTask(TT.li,TT.ck,t); dirty(); closeTime(); }
+function clearTime(){ const t=bucket(TT.li,TT.ck)[TT.ti]; t.time=null; render(); pushTask(TT.li,TT.ck,t); dirty(); closeTime(); }
+function closeTime(){ document.getElementById('timeBg').classList.remove('show'); }
+
+/* 薬剤ピッカー */
+let DRT=null;
+function openDrugPicker(li,ck,ti){
+  DRT={li,ck,ti};
+  const t=bucket(li,ck)[ti]; const kind=drugKind(t.label)||'analgesic';
+  document.getElementById('drugTitle').textContent=`「${t.label}」の薬剤`;
+  const list=DRUGS[kind]||[];
+  document.getElementById('drugGrid').innerHTML =
+    list.map(d=>`<button class="drug-opt ${t.drug===d?'on':''}" onclick="selectDrug('${d.replace(/'/g,"\\'")}')">${esc(d)}</button>`).join('')
+    + `<button class="drug-opt other" onclick="otherDrug()">その他（手入力）</button>`;
+  document.getElementById('drugBg').classList.add('show');
+}
+function selectDrug(name){ const t=bucket(DRT.li,DRT.ck)[DRT.ti]; t.drug=name; render(); pushTask(DRT.li,DRT.ck,t); dirty(); closeDrug(); }
+function otherDrug(){ const v=prompt('薬剤名を入力（例：セファゾリン→メロペネム）'); if(v&&v.trim()){ selectDrug(v.trim()); } }
+function clearDrug(){ const t=bucket(DRT.li,DRT.ck)[DRT.ti]; t.drug=null; render(); pushTask(DRT.li,DRT.ck,t); dirty(); closeDrug(); }
+function closeDrug(){ document.getElementById('drugBg').classList.remove('show'); }
+
+/* ====== クリア＆元に戻す ====== */
+function snapshotActive(){
+  const tasks=[], modes=[];
+  lanes.forEach((L,li)=>{
+    modes.push({lane_key:L.key, mode:L.mode});
+    const cks = L.kind==='bed' ? CATS.map(c=>c.key) : ['tasks'];
+    cks.forEach(ck=> bucket(li,ck).forEach(t=>{ if(t.active) tasks.push({lane_key:L.key,category:ck,label:t.label,priority:t.priority,done:t.done,beds:t.beds,task_time:t.time}); }));
+  });
+  return {tasks,modes};
+}
+async function resetAll(){
+  if(!confirm('今日の盤をすべてクリアします。全員の画面から消えます。直後なら「元に戻す」で復元できます。よろしいですか？')) return;
+  const snap=snapshotActive();
+  try{ localStorage.setItem(BACKUP, JSON.stringify(snap)); }catch(e){}
+  if(online){
+    try{ await sb.from('icu_floor_tasks').delete().eq('service_date',TODAY); await sb.from('icu_lane_modes').delete().eq('service_date',TODAY); }
+    catch(e){ goOffline(e); }
+  }
+  initBoard(); render(); saveCache(); updateUndoBtn();
+}
+async function undoClear(){
+  let snap=null; try{ snap=JSON.parse(localStorage.getItem(BACKUP)||'null'); }catch(e){}
+  if(!snap) return;
+  if(online){
+    try{
+      if(snap.tasks.length) await sb.from('icu_floor_tasks').upsert(snap.tasks.map(t=>({service_date:TODAY,...t})),{onConflict:'service_date,lane_key,category,label'});
+      const realModes=snap.modes.filter(m=>m.mode==='run');
+      if(realModes.length) await sb.from('icu_lane_modes').upsert(realModes.map(m=>({service_date:TODAY,...m})),{onConflict:'service_date,lane_key'});
+    }catch(e){ goOffline(e); }
+    try{ localStorage.removeItem(BACKUP); }catch(e){}
+    updateUndoBtn(); await reloadAll();
+  }else{
+    rebuildLanes(snap.tasks.map((t,i)=>({...t,id:'local'+i})), snap.modes);
+    try{ localStorage.removeItem(BACKUP); }catch(e){}
+    render(); saveCache(); updateUndoBtn();
+  }
+}
+function dirty(){ if(localStorage.getItem(BACKUP)){ try{localStorage.removeItem(BACKUP);}catch(e){} updateUndoBtn(); } }
+function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.style.display = localStorage.getItem(BACKUP)?'':'none'; }
+
+boot();
+applyFont();
+updateChimeBtn();
+</script>
+</body>
+</html>
